@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gke-ingress
+  namespace: dtuc
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "dev-dtuc-ip"
+    networking.gke.io/managed-certificates: "ssl-managed-certificates"
+    kubernetes.io/ingress.allow-http: "false"
+spec:
+  rules:
+    - host: sandbox-app.drivethruurgentcare.com
+      http:
+        paths:
+          - pathType: ImplementationSpecific
+            path: /*
+            backend:
+              service:
+                name: vs-dtuc-app
+                port: 
+                  number: 3001
+          - path: /api/v1/
+            pathType: Prefix
+            backend:
+              service:
+                name: vs-uc-api
+                port:
+                  number: 8080
+
+    - host: sandbox-admin.drivethruurgentcare.com
+      http:
+        paths:
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: vs-uc-app
+                port:
+                  number: 80
+          - path: /api/v1/
+            pathType: Prefix
+            backend:
+              service:
+                name: vs-uc-api
+                port:
+                  number: 8080
