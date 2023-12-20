@@ -1,0 +1,120 @@
+version: 2.1
+orbs:
+  gcp-gke: circleci/gcp-gke@1.1.0
+  slack: circleci/slack@4.3.0
+commands:
+    notify-slack:
+        description: "Send Slack notification"
+        parameters:
+            emoji:
+                type: string
+                default: ""
+            event_type:
+                type: string
+                default: "pass"
+            success_failed:
+                type: string
+                default: ""
+        steps:
+            - slack/notify:
+                  event: << parameters.event_type >>
+                  channel: circleci-builds
+                  custom: |
+                      {
+                        "text": "CircleCI Job",              
+                        "blocks": [
+                          {
+                            "type": "header",
+                            "text": {
+                              "type": "plain_text",
+                              "text": "Deploy << parameters.success_failed >> << parameters.emoji >>",
+                              "emoji": true
+                            }
+                          },
+                          {
+                            "type": "section",
+                            "fields": [
+                              {
+                                "type": "mrkdwn",
+                                "text": "*Project*: $CIRCLE_PROJECT_REPONAME\n*Branch*: $CIRCLE_BRANCH"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "actions",
+                            "elements": [
+                              {
+                                "type": "button",
+                                "text": {
+                                  "type": "plain_text",
+                                  "text": "View Job"
+                                },
+                                "url": "${CIRCLE_BUILD_URL}"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+jobs:
+  deploy_staging:
+    description: Deploy application to Google Kubernetes Engine in Staging Environment
+    machine: true
+    resource_class: viral-solutions-llc/self-host
+    steps:
+      - checkout
+      - gcp-gke/update-kubeconfig-with-credentials:
+          cluster: dev-dtuc-cluster
+          gcloud-service-key: GCLOUD_SERVICE_KEY_STAGING
+          google-compute-zone: GOOGLE_COMPUTE_ZONE_STAGING
+          google-project-id: GOOGLE_PROJECT_ID_STAGING
+          perform-login: true
+      - run:
+          name: Install gcloud dependies & Connect to Cluster 
+          command: |
+            gcloud components update
+            gcloud components install gke-gcloud-auth-plugin
+            export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+            gcloud container clusters get-credentials dev-dtuc-cluster
+      - run:
+          name: Upgrade UC API
+          command: | 
+            export IMAGE_TAG=$(gcloud container images list-tags gcr.io/dev-dtuc/vs-uc-api --format='get(tags)' --sort-by=TIMESTAMP --filter='tags:*' | tail -n1)
+            echo "Latest image tag: $IMAGE_TAG"
+            sed -i "s/{{tag}}/$IMAGE_TAG/g" ./deployment-infrastructure/vs-uc-api/values.yaml
+            helm upgrade vs-uc-api --install ./deployment-infrastructure/vs-uc-api -n dtuc -f ./deployment-infrastructure/vs-uc-api/values.yaml
+      - run:
+          name: Upgrade Dtuc APP
+          command: |
+            export IMAGE_TAG=$(gcloud container images list-tags gcr.io/dev-dtuc/vs-dtuc-app --format='get(tags)' --sort-by=TIMESTAMP --filter='tags:*' | tail -n1)
+            echo "Latest image tag: $IMAGE_TAG"
+            sed -i "s/{{tag}}/$IMAGE_TAG/g" ./deployment-infrastructure/vs-dtuc-app/values.yaml
+            helm upgrade vs-dtuc-app --install ./deployment-infrastructure/vs-dtuc-app -n dtuc -f ./deployment-infrastructure/vs-dtuc-app/values.yaml
+      - run:
+          name: Upgrade UC APP
+          command: |
+            export IMAGE_TAG=$(gcloud container images list-tags gcr.io/dev-dtuc/vs-uc-app --format='get(tags)' --sort-by=TIMESTAMP --filter='tags:*' | tail -n1)
+            echo "Latest image tag: $IMAGE_TAG"
+            sed -i "s/{{tag}}/$IMAGE_TAG/g" ./deployment-infrastructure/vs-uc-app/values.yaml
+            helm upgrade vs-uc-app --install ./deployment-infrastructure/vs-uc-app -n dtuc -f ./deployment-infrastructure/vs-uc-app/values.yaml
+      - run:
+          name: GCE Ingress setup
+          command: |
+            kubectl apply -f ./ingress/ingress-staging.yaml
+      - notify-slack:
+          event_type: "pass"
+          success_failed: "Successful"
+          emoji: ":white_check_mark:"
+      - notify-slack:
+          event_type: "fail"
+          success_failed: "failed"
+          emoji: ":x:"
+workflows:
+  deploy_staging:
+    jobs:
+      - deploy_staging:
+          filters:
+            branches:
+              only: 
+               - development
+               - /.*/
+
