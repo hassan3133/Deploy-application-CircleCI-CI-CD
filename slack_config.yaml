@@ -63,7 +63,7 @@ jobs:
     steps:
       - checkout
       - gcp-gke/update-kubeconfig-with-credentials:
-          cluster: dev-dtuc-cluster
+          cluster: sample-cluster
           gcloud-service-key: GCLOUD_SERVICE_KEY_STAGING
           google-compute-zone: GOOGLE_COMPUTE_ZONE_STAGING
           google-project-id: GOOGLE_PROJECT_ID_STAGING
@@ -76,30 +76,9 @@ jobs:
             export USE_GKE_GCLOUD_AUTH_PLUGIN=True
             gcloud container clusters get-credentials dev-dtuc-cluster
       - run:
-          name: Upgrade UC API
+          name: Deploy  and Upgrade Application 
           command: | 
-            export IMAGE_TAG=$(gcloud container images list-tags gcr.io/dev-dtuc/vs-uc-api --format='get(tags)' --sort-by=TIMESTAMP --filter='tags:*' | tail -n1)
-            echo "Latest image tag: $IMAGE_TAG"
-            sed -i "s/{{tag}}/$IMAGE_TAG/g" ./deployment-infrastructure/vs-uc-api/values.yaml
-            helm upgrade vs-uc-api --install ./deployment-infrastructure/vs-uc-api -n dtuc -f ./deployment-infrastructure/vs-uc-api/values.yaml
-      - run:
-          name: Upgrade Dtuc APP
-          command: |
-            export IMAGE_TAG=$(gcloud container images list-tags gcr.io/dev-dtuc/vs-dtuc-app --format='get(tags)' --sort-by=TIMESTAMP --filter='tags:*' | tail -n1)
-            echo "Latest image tag: $IMAGE_TAG"
-            sed -i "s/{{tag}}/$IMAGE_TAG/g" ./deployment-infrastructure/vs-dtuc-app/values.yaml
-            helm upgrade vs-dtuc-app --install ./deployment-infrastructure/vs-dtuc-app -n dtuc -f ./deployment-infrastructure/vs-dtuc-app/values.yaml
-      - run:
-          name: Upgrade UC APP
-          command: |
-            export IMAGE_TAG=$(gcloud container images list-tags gcr.io/dev-dtuc/vs-uc-app --format='get(tags)' --sort-by=TIMESTAMP --filter='tags:*' | tail -n1)
-            echo "Latest image tag: $IMAGE_TAG"
-            sed -i "s/{{tag}}/$IMAGE_TAG/g" ./deployment-infrastructure/vs-uc-app/values.yaml
-            helm upgrade vs-uc-app --install ./deployment-infrastructure/vs-uc-app -n dtuc -f ./deployment-infrastructure/vs-uc-app/values.yaml
-      - run:
-          name: GCE Ingress setup
-          command: |
-            kubectl apply -f ./ingress/ingress-staging.yaml
+            helm upgrade <release name> --install ./deployment-infrastructure/(application_name) -n dtuc -f ./deployment-infrastructure/vs-uc-api/values.yaml
       - notify-slack:
           event_type: "pass"
           success_failed: "Successful"
@@ -116,4 +95,3 @@ workflows:
             branches:
               only: 
                - development
-               - /.*/
